@@ -4,31 +4,38 @@ export UID := $(shell id -u)
 export GID := $(shell id -g)
 
 # One-off app container with the repo bind-mounted: tools see current code and write back.
-TOOL := docker compose run --rm --build -v "$(CURDIR)":/app app
+# --no-deps: tools don't need the database.
+TOOL := docker compose run --rm --build --no-deps -v "$(CURDIR)":/app app
 # Plain uv image: works before uv.lock exists; --no-sync keeps a venv out of the repo.
 UV := docker run --rm -u $(UID):$(GID) -e UV_CACHE_DIR=/tmp/uv-cache \
 	-v "$(CURDIR)":/app -w /app $(UV_IMAGE) uv
 
 .DEFAULT_GOAL := help
-.PHONY: help build run dev down test lint shell lock add
+.PHONY: help build run dev down reset test test-integration lint shell lock add
 
 help: ## Show this help
-	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-6s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
 
 build: ## Build the app image
 	docker compose build
 
-run: ## Run the app once (ARGS="..." are passed to main.py)
-	docker compose run --rm --build app python src/main.py $(ARGS)
+run: ## Start the chat UI on http://localhost:8001 (APP_PORT=... to change)
+	docker compose up --build
 
 dev: ## Sync + restart on code changes; meant for long-running apps
 	docker compose up --build --watch
 
-down: ## Stop and remove containers
+down: ## Stop and remove containers (chat history is kept)
 	docker compose down --remove-orphans
 
-test: ## Run pytest
-	$(TOOL) pytest
+reset: ## Stop and delete all chats and documents (needed after a schema change)
+	docker compose down --remove-orphans --volumes
+
+test: ## Run unit tests
+	$(TOOL) pytest $(ARGS)
+
+test-integration: ## Run integration tests against Postgres
+	docker compose run --rm --build -v "$(CURDIR)":/app app pytest -m integration $(ARGS)
 
 lint: ## Fix lint issues, then format (fails if unfixable issues remain)
 	$(TOOL) sh -c 'ruff check --fix; rc=$$?; ruff format && exit $$rc'

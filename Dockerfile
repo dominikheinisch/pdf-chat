@@ -28,4 +28,6 @@ RUN --mount=type=cache,target=/home/app/.cache/uv,uid=$UID,gid=$GID \
 
 COPY --chown=app:app . .
 
-CMD ["python", "src/main.py"]
+# --headless: no browser to open inside a container.
+EXPOSE 8000
+CMD ["chainlit", "run", "src/app.py", "--headless", "--host", "0.0.0.0", "--port", "8000"]

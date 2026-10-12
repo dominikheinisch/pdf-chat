@@ -1,8 +1,12 @@
 [project]
-name = "hello-world"
+name = "pdf-chat"
 version = "0.1.0"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "asyncpg>=0.32.0",
+    "chainlit>=2.12.0",
+    "pydantic-settings>=2.15.0",
+]
 
 [tool.uv]
 package = false
@@ -10,6 +14,9 @@ package = false
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-m 'not integration'"
+markers = ["integration: needs the Postgres database (make test-integration)"]
 
 [tool.ruff]
 line-length = 88
@@ -20,5 +27,6 @@ extend-select = ["I"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.17.0",
 ]

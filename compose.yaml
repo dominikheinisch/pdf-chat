@@ -7,6 +7,19 @@ services:
         GID: ${GID:-1000}
     # Python as PID 1 ignores SIGTERM; an init process makes watch restarts instant.
     init: true
+    # Loopback only: the UI isn't reachable from other machines on the network.
+    ports:
+      - "127.0.0.1:${APP_PORT:-8001}:8000"
+    # Secrets (see .env.example); optional so test/lint/shell run without it.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Setting this is what turns on Chainlit's Postgres data layer.
+      DATABASE_URL: postgresql://chainlit:chainlit@db:5432/chainlit
+    depends_on:
+      db:
+        condition: service_healthy
     develop:
       watch:
         - action: sync+restart
@@ -16,3 +29,22 @@ services:
           path: pyproject.toml
         - action: rebuild
           path: uv.lock
+
+  db:
+    image: pgvector/pgvector:pg18
+    # Dev-only credentials: no port is published, so only the app can reach it.
+    environment:
+      POSTGRES_USER: chainlit
+      POSTGRES_PASSWORD: chainlit
+      POSTGRES_DB: chainlit
+    volumes:
+      # Postgres 18 images keep data in /var/lib/postgresql, not .../data.
+      - db-data:/var/lib/postgresql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chainlit -d chainlit"]
+      interval: 2s
+      retries: 15
+
+volumes:
+  db-data:
