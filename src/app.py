@@ -26,8 +26,8 @@ from store import PostgresStore, connect
 settings = Settings()
 chat: Chat
 
-MODES = [RetrievalMode.FULL_CONTEXT, RetrievalMode.RAG, RetrievalMode.AGENTIC]
-DEFAULT_MODE = RetrievalMode.FULL_CONTEXT
+MODES = list(RetrievalMode)
+DEFAULT_MODE = RetrievalMode.AUTO
 
 
 @cl.on_app_startup

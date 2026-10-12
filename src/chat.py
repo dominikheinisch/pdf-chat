@@ -26,6 +26,7 @@ from extraction import (
     extract,
 )
 from quotes import check_quotes
+from routing import RetrievalMode, route
 
 TOP_CHUNKS = 8
 NO_DOCUMENTS = "Upload a PDF first, then ask me about it."
@@ -54,13 +55,6 @@ REJECTIONS = {
     CorruptedPdf: "The file is damaged or isn't a valid PDF.",
     NoText: f"No page has a text layer {NO_TEXT_LAYER}",
 }
-
-
-class RetrievalMode(StrEnum):
-    AUTO = "Auto"
-    FULL_CONTEXT = "Full context"
-    RAG = "RAG"
-    AGENTIC = "Agentic navigation"
 
 
 @dataclass(frozen=True)
@@ -156,21 +150,23 @@ class Chat:
         if question.strip().lower() == CAPABILITIES_QUESTION:
             yield Answer(CAPABILITIES)
             return
-        documents = await self.store.load_documents(thread_id)
+        documents = await self.store.list_documents(thread_id)
         if not documents:
             yield Answer(NO_DOCUMENTS)
             return
-        if mode == RetrievalMode.RAG:
+        effective, label = route(mode, sum(d.tokens for d in documents))
+        yield ModeUsed(label)
+        if effective == RetrievalMode.RAG:
             answer = self._rag(thread_id, question, history)
-        elif mode == RetrievalMode.AGENTIC:
+        elif effective == RetrievalMode.AGENTIC:
             answer = self._agentic(thread_id, question, history)
         else:
-            answer = self._full_context(documents, question, history)
+            answer = self._full_context(thread_id, question, history)
         async for event in answer:
             yield event
 
-    async def _full_context(self, documents, question, history):
-        yield ModeUsed(RetrievalMode.FULL_CONTEXT)
+    async def _full_context(self, thread_id, question, history):
+        documents = await self.store.load_documents(thread_id)
 
         def locate(citation) -> Location:
             document = documents[citation.document_index]
@@ -185,7 +181,6 @@ class Chat:
             yield event
 
     async def _rag(self, thread_id, question, history):
-        yield ModeUsed(RetrievalMode.RAG)
         query = await self.embedder.embed_query(question)
         found = await self.store.search(thread_id, query, TOP_CHUNKS)
 
@@ -206,7 +201,6 @@ class Chat:
             yield event
 
     async def _agentic(self, thread_id, question, history):
-        yield ModeUsed(RetrievalMode.AGENTIC)
         tools = make_tools(self.store, self.embedder, thread_id)
         graph = build_agent(self.chat_model, tools)
         state = {
