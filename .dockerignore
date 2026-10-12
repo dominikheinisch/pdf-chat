@@ -1,0 +1,9 @@
+.git
+.venv
+.idea
+.vscode
+.scratch
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
