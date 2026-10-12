@@ -38,6 +38,9 @@ async def test_stores_documents_per_thread_and_deletes_them_with_the_thread(
     [info] = await store.list_documents(thread_id)
     assert (info.id, info.name, info.page_count) == (document_id, "invoice.pdf", 2)
 
+    assert await store.read_pages(thread_id, document_id, 2, 2) == [document.pages[1]]
+    assert await store.get_outline(thread_id, document_id) == document.outline
+
     query = [0.1, 0.9] + [0.0] * 382
     assert await store.search(thread_id, query, limit=1) == [
         FoundChunk("invoice.pdf", Chunk("Late fees", 1, 2))

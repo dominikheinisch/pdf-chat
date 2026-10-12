@@ -3,15 +3,20 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import StrEnum
 
+from langchain_core.messages import HumanMessage
+
+from agent import MAX_TOOL_CALLS, STOPPED_EARLY, build_agent, make_tools
 from answers import (
     Answer,
     Location,
     Sources,
     document_block,
     page_label,
+    recent,
     stream_answer,
 )
 from chunking import chunk
+from citations import CitationNumbering
 from extraction import (
     CorruptedPdf,
     EncryptedPdf,
@@ -60,6 +65,13 @@ class RetrievalMode(StrEnum):
 @dataclass(frozen=True)
 class ModeUsed:
     label: str
+
+
+@dataclass(frozen=True)
+class ToolUsed:
+    name: str
+    input: dict
+    output: str
 
 
 @dataclass(frozen=True)
@@ -113,11 +125,12 @@ class IngestReport:
 
 
 class Chat:
-    def __init__(self, store, embedder, llm=None, model=None):
+    def __init__(self, store, embedder, llm=None, model=None, chat_model=None):
         self.store = store
         self.embedder = embedder
         self.llm = llm
         self.model = model
+        self.chat_model = chat_model
 
     async def ingest(self, thread_id: str, uploads: list[Upload]) -> IngestReport:
         return IngestReport([await self._ingest(thread_id, u) for u in uploads])
@@ -148,6 +161,8 @@ class Chat:
             return
         if mode == RetrievalMode.RAG:
             answer = self._rag(thread_id, question, history)
+        elif mode == RetrievalMode.AGENTIC:
+            answer = self._agentic(thread_id, question, history)
         else:
             answer = self._full_context(documents, question, history)
         async for event in answer:
@@ -188,6 +203,37 @@ class Chat:
             self.llm, self.model, blocks, question, history, locate
         ):
             yield event
+
+    async def _agentic(self, thread_id, question, history):
+        yield ModeUsed(RetrievalMode.AGENTIC)
+        tools = make_tools(self.store, self.embedder, thread_id)
+        graph = build_agent(self.chat_model, tools)
+        state = {
+            "messages": [*recent(history), HumanMessage(question)],
+            "tool_calls": 0,
+        }
+        numbering = CitationNumbering()
+        tool_calls = 0
+        # The limit is a safety net; the agent itself stops after MAX_TOOL_CALLS.
+        config = {"recursion_limit": 4 * MAX_TOOL_CALLS}
+        async for event in graph.astream_events(state, config, version="v2"):
+            kind = event["event"]
+            if kind == "on_chat_model_stream":
+                if text := numbering.feed(event["data"]["chunk"].text):
+                    yield Answer(text)
+            elif kind == "on_tool_end":
+                tool_calls += 1
+                output = event["data"]["output"]
+                yield ToolUsed(
+                    event["name"],
+                    event["data"].get("input", {}),
+                    str(getattr(output, "content", output)),
+                )
+        if text := numbering.flush():
+            yield Answer(text)
+        if tool_calls >= MAX_TOOL_CALLS:
+            yield Answer(STOPPED_EARLY)
+        yield Sources(numbering.sources)
 
 
 def missing_text_warning(document) -> str | None:

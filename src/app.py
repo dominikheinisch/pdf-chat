@@ -6,9 +6,18 @@ from anthropic import AsyncAnthropic
 from chainlit.element import Element
 from chainlit.input_widget import Select
 from chainlit.types import ThreadDict
+from langchain_anthropic import ChatAnthropic
 
 from answers import Answer, Sources
-from chat import Chat, IngestReport, ModeUsed, Outcome, RetrievalMode, Upload
+from chat import (
+    Chat,
+    IngestReport,
+    ModeUsed,
+    Outcome,
+    RetrievalMode,
+    ToolUsed,
+    Upload,
+)
 from config import Settings
 from embeddings import FastEmbedder
 from store import PostgresStore, connect
@@ -17,7 +26,7 @@ from store import PostgresStore, connect
 settings = Settings()
 chat: Chat
 
-MODES = [RetrievalMode.FULL_CONTEXT, RetrievalMode.RAG]
+MODES = [RetrievalMode.FULL_CONTEXT, RetrievalMode.RAG, RetrievalMode.AGENTIC]
 DEFAULT_MODE = RetrievalMode.FULL_CONTEXT
 
 
@@ -25,8 +34,16 @@ DEFAULT_MODE = RetrievalMode.FULL_CONTEXT
 async def startup() -> None:
     global chat
     store = PostgresStore(await connect(settings.database_url))
-    llm = AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
-    chat = Chat(store, FastEmbedder(), llm=llm, model=settings.llm_model)
+    api_key = settings.anthropic_api_key.get_secret_value()
+    chat = Chat(
+        store,
+        FastEmbedder(),
+        llm=AsyncAnthropic(api_key=api_key),
+        model=settings.llm_model,
+        chat_model=ChatAnthropic(
+            model=settings.llm_model, api_key=api_key, max_tokens=4096
+        ),
+    )
 
 
 @cl.password_auth_callback
@@ -142,6 +159,10 @@ async def answer(question: str) -> None:
     async for event in chat.ask(thread_id, question, mode, history):
         if isinstance(event, ModeUsed):
             effective_mode = event.label
+        elif isinstance(event, ToolUsed):
+            async with cl.Step(name=event.name, type="tool") as step:
+                step.input = event.input
+                step.output = event.output
         elif isinstance(event, Answer):
             text += event.text
             await reply.stream_token(event.text)
@@ -159,11 +180,8 @@ async def add_sources(reply: cl.Message, sources: Sources) -> None:
     for source in sources.sources:
         name = f"Source {source.number}"
         lines.append(f"{source.number}. {source.label} ({name})")
-        reply.elements.append(
-            cl.Text(
-                name=name,
-                content=f"**{source.label}**\n\n> {source.quote}",
-                display="side",
-            )
-        )
+        content = f"**{source.label}**"
+        if source.quote:
+            content += f"\n\n> {source.quote}"
+        reply.elements.append(cl.Text(name=name, content=content, display="side"))
     await reply.stream_token("\n".join(lines))

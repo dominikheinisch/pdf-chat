@@ -1,4 +1,11 @@
+import json
+import re
 from types import SimpleNamespace as Event
+
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from pydantic import Field
 
 
 def text(value):
@@ -66,3 +73,59 @@ class FakeEmbedder:
             vector[sum(map(ord, word)) % self.dimensions] += 1.0
         norm = sum(v * v for v in vector) ** 0.5 or 1.0
         return [v / norm for v in vector]
+
+
+class FakeChatModel(BaseChatModel):
+    """Replies with scripted messages, streamed word by word like a real model."""
+
+    replies: list[AIMessage]
+    calls: list[dict] = Field(default_factory=list)
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake"
+
+    def bind_tools(self, tools, **kwargs):
+        return self.bind(tools=[t.name for t in tools], **kwargs)
+
+    def _next(self, messages, kwargs) -> AIMessage:
+        self.calls.append({"messages": messages, **kwargs})
+        if kwargs.get("tool_choice") == {"type": "none"}:
+            # Like the API: a model told not to use tools answers in text.
+            self.replies = [r for r in self.replies if not r.tool_calls]
+        return self.replies.pop(0)
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        return ChatResult(
+            generations=[ChatGeneration(message=self._next(messages, kwargs))]
+        )
+
+    async def _astream(self, messages, stop=None, run_manager=None, **kwargs):
+        reply = self._next(messages, kwargs)
+        for word in re.split(r"(\s+)", reply.content):
+            chunk = ChatGenerationChunk(message=AIMessageChunk(content=word))
+            if run_manager:
+                await run_manager.on_llm_new_token(word, chunk=chunk)
+            yield chunk
+        if reply.tool_calls:
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": c["name"],
+                            "args": json.dumps(c["args"]),
+                            "id": c["id"],
+                            "index": i,
+                        }
+                        for i, c in enumerate(reply.tool_calls)
+                    ],
+                )
+            )
+
+
+def tool_call(name, **args):
+    return AIMessage(
+        content="",
+        tool_calls=[{"name": name, "args": args, "id": f"call-{name}-{id(args)}"}],
+    )

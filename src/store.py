@@ -7,7 +7,7 @@ import asyncpg
 from pgvector.asyncpg import register_vector
 
 from chunking import Chunk
-from extraction import Document
+from extraction import Document, OutlineEntry
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,14 @@ class MemoryStore:
         for c, embedding in zip(chunks, embeddings, strict=True):
             self._chunks[thread_id].append((FoundChunk(document.name, c), embedding))
         return document_id
+
+    async def get_outline(self, thread_id: str, document_id: str) -> list[OutlineEntry]:
+        return self._documents[thread_id][document_id].outline
+
+    async def read_pages(
+        self, thread_id: str, document_id: str, first: int, last: int
+    ) -> list[str]:
+        return self._documents[thread_id][document_id].pages[first - 1 : last]
 
     async def search(
         self, thread_id: str, embedding: list[float], limit: int
@@ -181,3 +189,22 @@ class PostgresStore:
             thread_id,
         )
         return [StoredDocument(**row) for row in rows]
+
+    async def get_outline(self, thread_id: str, document_id: str) -> list[OutlineEntry]:
+        outline = await self.pool.fetchval(
+            "SELECT outline FROM documents WHERE thread_id = $1 AND id = $2",
+            thread_id,
+            document_id,
+        )
+        return [OutlineEntry(**entry) for entry in json.loads(outline)]
+
+    async def read_pages(
+        self, thread_id: str, document_id: str, first: int, last: int
+    ) -> list[str]:
+        return await self.pool.fetchval(
+            "SELECT pages[$3:$4] FROM documents WHERE thread_id = $1 AND id = $2",
+            thread_id,
+            document_id,
+            first,
+            last,
+        )
