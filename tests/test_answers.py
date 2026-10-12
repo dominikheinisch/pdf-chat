@@ -1,4 +1,4 @@
-from fakes import FakeAnthropic, cite, text
+from fakes import FakeAnthropic, FakeEmbedder, cite, text
 from pdfs import make_pdf, small_pdf
 
 from answers import Answer, Source, Sources
@@ -9,7 +9,9 @@ PDF = "application/pdf"
 
 
 async def chat_with(llm, *pdfs):
-    chat = Chat(store=MemoryStore(), llm=llm, model="test-model")
+    chat = Chat(
+        store=MemoryStore(), embedder=FakeEmbedder(), llm=llm, model="test-model"
+    )
     await chat.ingest("thread-1", [Upload(name, data, PDF) for name, data in pdfs])
     return chat
 

@@ -46,3 +46,23 @@ class FakeAnthropic:
                 yield Event(type="content_block_delta", index=index, delta=delta)
             yield Event(type="content_block_stop", index=index)
         yield Event(type="message_stop")
+
+
+class FakeEmbedder:
+    """Bag-of-words vectors: texts sharing words end up close together."""
+
+    dimensions = 384
+
+    async def embed_passages(self, texts):
+        return [self._embed(text) for text in texts]
+
+    async def embed_query(self, text):
+        return self._embed(text)
+
+    def _embed(self, text):
+        vector = [0.0] * self.dimensions
+        for word in text.lower().split():
+            word = word.strip(".,:;!?")
+            vector[sum(map(ord, word)) % self.dimensions] += 1.0
+        norm = sum(v * v for v in vector) ** 0.5 or 1.0
+        return [v / norm for v in vector]

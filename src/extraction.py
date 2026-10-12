@@ -67,7 +67,7 @@ def extract(data: bytes, name: str) -> Document:
             raise EncryptedPdf(name)
         if pdf.page_count == 0:
             raise CorruptedPdf(name)
-        pages = [page.get_text().strip() for page in pdf]
+        pages = [page_text(page) for page in pdf]
         bookmarks = pdf.get_toc(simple=True)
     if not any(pages):
         raise NoText(name)
@@ -77,6 +77,14 @@ def extract(data: bytes, name: str) -> Document:
         content_hash=hashlib.sha256(data).hexdigest(),
         pages=pages,
         outline=outline or first_lines(pages),
+    )
+
+
+def page_text(page: pymupdf.Page) -> str:
+    # One text block is roughly one paragraph; blank lines keep them apart.
+    blocks = page.get_text("blocks", sort=True)
+    return "\n\n".join(
+        text.strip() for *_, text, _, kind in blocks if kind == 0 and text.strip()
     )
 
 

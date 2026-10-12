@@ -3,7 +3,15 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import StrEnum
 
-from answers import Answer, Location, Sources, document_block, stream_answer
+from answers import (
+    Answer,
+    Location,
+    Sources,
+    document_block,
+    page_label,
+    stream_answer,
+)
+from chunking import chunk
 from extraction import (
     CorruptedPdf,
     EncryptedPdf,
@@ -13,6 +21,7 @@ from extraction import (
     extract,
 )
 
+TOP_CHUNKS = 8
 NO_DOCUMENTS = "Upload a PDF first, then ask me about it."
 
 CAPABILITIES_QUESTION = "what can you do?"
@@ -104,8 +113,9 @@ class IngestReport:
 
 
 class Chat:
-    def __init__(self, store, llm=None, model=None):
+    def __init__(self, store, embedder, llm=None, model=None):
         self.store = store
+        self.embedder = embedder
         self.llm = llm
         self.model = model
 
@@ -121,7 +131,9 @@ class Chat:
             return FileResult(upload.name, Outcome.REJECTED, REJECTIONS[type(error)])
         if await self.store.has_document(thread_id, document.content_hash):
             return FileResult(upload.name, Outcome.SKIPPED, "Already in this chat.")
-        await self.store.add_document(thread_id, document)
+        chunks = await asyncio.to_thread(chunk, document.pages)
+        embeddings = await self.embedder.embed_passages([c.text for c in chunks])
+        await self.store.add_document(thread_id, document, chunks, embeddings)
         return FileResult(upload.name, Outcome.ADDED, missing_text_warning(document))
 
     async def ask(
@@ -134,6 +146,14 @@ class Chat:
         if not documents:
             yield Answer(NO_DOCUMENTS)
             return
+        if mode == RetrievalMode.RAG:
+            answer = self._rag(thread_id, question, history)
+        else:
+            answer = self._full_context(documents, question, history)
+        async for event in answer:
+            yield event
+
+    async def _full_context(self, documents, question, history):
         yield ModeUsed(RetrievalMode.FULL_CONTEXT)
 
         def locate(citation) -> Location:
@@ -143,6 +163,27 @@ class Chat:
             )
 
         blocks = [document_block(d.name, d.pages) for d in documents]
+        async for event in stream_answer(
+            self.llm, self.model, blocks, question, history, locate
+        ):
+            yield event
+
+    async def _rag(self, thread_id, question, history):
+        yield ModeUsed(RetrievalMode.RAG)
+        query = await self.embedder.embed_query(question)
+        found = await self.store.search(thread_id, query, TOP_CHUNKS)
+
+        def locate(citation) -> Location:
+            hit = found[citation.document_index]
+            return Location(hit.document, hit.chunk.page_start, hit.chunk.page_end)
+
+        blocks = [
+            document_block(
+                page_label(f.document, f.chunk.page_start, f.chunk.page_end),
+                [f.chunk.text],
+            )
+            for f in found
+        ]
         async for event in stream_answer(
             self.llm, self.model, blocks, question, history, locate
         ):

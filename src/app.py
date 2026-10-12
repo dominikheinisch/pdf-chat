@@ -1,28 +1,32 @@
 from pathlib import Path
 from secrets import compare_digest
 
-import asyncpg
 import chainlit as cl
 from anthropic import AsyncAnthropic
 from chainlit.element import Element
+from chainlit.input_widget import Select
 from chainlit.types import ThreadDict
 
 from answers import Answer, Sources
 from chat import Chat, IngestReport, ModeUsed, Outcome, RetrievalMode, Upload
 from config import Settings
-from store import PostgresStore
+from embeddings import FastEmbedder
+from store import PostgresStore, connect
 
 # Fails at startup when a required setting such as ANTHROPIC_API_KEY is missing.
 settings = Settings()
 chat: Chat
 
+MODES = [RetrievalMode.FULL_CONTEXT, RetrievalMode.RAG]
+DEFAULT_MODE = RetrievalMode.FULL_CONTEXT
+
 
 @cl.on_app_startup
 async def startup() -> None:
     global chat
-    pool = await asyncpg.create_pool(settings.database_url)
+    store = PostgresStore(await connect(settings.database_url))
     llm = AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
-    chat = Chat(store=PostgresStore(pool), llm=llm, model=settings.llm_model)
+    chat = Chat(store, FastEmbedder(), llm=llm, model=settings.llm_model)
 
 
 @cl.password_auth_callback
@@ -46,6 +50,7 @@ async def starters() -> list[cl.Starter]:
 @cl.on_chat_start
 async def start() -> None:
     cl.user_session.set("history", [])
+    await send_settings(DEFAULT_MODE)
 
 
 @cl.on_chat_resume
@@ -57,6 +62,27 @@ async def resume(thread: ThreadDict) -> None:
         if step["type"] in roles
     ]
     cl.user_session.set("history", history)
+    # The mode comes back with the session, but the settings panel must be re-sent.
+    await send_settings(cl.user_session.get("mode", DEFAULT_MODE))
+
+
+@cl.on_settings_update
+async def on_settings_update(values: dict) -> None:
+    cl.user_session.set("mode", values["mode"])
+
+
+async def send_settings(mode: str) -> None:
+    values = await cl.ChatSettings(
+        [
+            Select(
+                id="mode",
+                label="Retrieval mode",
+                values=list(MODES),
+                initial_index=MODES.index(mode),
+            )
+        ]
+    ).send()
+    cl.user_session.set("mode", values["mode"])
 
 
 @cl.on_message
@@ -110,11 +136,12 @@ async def answer(question: str) -> None:
     thread_id = cl.context.session.thread_id
     history = cl.user_session.get("history", [])
     reply = cl.Message(content="")
-    mode = None
+    effective_mode = None
     text = ""
-    async for event in chat.ask(thread_id, question, RetrievalMode.AUTO, history):
+    mode = RetrievalMode(cl.user_session.get("mode", DEFAULT_MODE))
+    async for event in chat.ask(thread_id, question, mode, history):
         if isinstance(event, ModeUsed):
-            mode = event.label
+            effective_mode = event.label
         elif isinstance(event, Answer):
             text += event.text
             await reply.stream_token(event.text)
@@ -122,8 +149,8 @@ async def answer(question: str) -> None:
             await add_sources(reply, event)
     history.append({"role": "user", "content": question})
     history.append({"role": "assistant", "content": text})
-    if mode:
-        await reply.stream_token(f"\n\n*Mode: {mode}*")
+    if effective_mode:
+        await reply.stream_token(f"\n\n*Mode: {effective_mode}*")
     await reply.send()
 
 

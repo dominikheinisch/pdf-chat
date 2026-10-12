@@ -1,3 +1,4 @@
+from fakes import FakeEmbedder
 from pdfs import make_pdf, small_pdf
 
 from chat import Chat, Outcome, Upload
@@ -11,7 +12,7 @@ async def ingest(chat, *uploads, thread_id="thread-1"):
 
 
 async def test_adds_a_pdf_to_the_thread():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
 
     report = await ingest(chat, Upload("invoice.pdf", small_pdf(), PDF))
 
@@ -22,7 +23,7 @@ async def test_adds_a_pdf_to_the_thread():
 
 
 async def test_skips_a_pdf_that_is_already_in_the_thread():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
     pdf = small_pdf()
     await ingest(chat, Upload("invoice.pdf", pdf, PDF))
 
@@ -34,7 +35,7 @@ async def test_skips_a_pdf_that_is_already_in_the_thread():
 
 
 async def test_the_same_pdf_can_be_added_to_another_thread():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
     pdf = small_pdf()
     await ingest(chat, Upload("invoice.pdf", pdf, PDF), thread_id="thread-1")
 
@@ -44,7 +45,7 @@ async def test_the_same_pdf_can_be_added_to_another_thread():
 
 
 async def test_reports_each_file_of_a_mixed_upload():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
     pdf = small_pdf()
 
     report = await ingest(
@@ -77,7 +78,7 @@ async def test_reports_each_file_of_a_mixed_upload():
 
 
 async def test_warns_about_pages_without_a_text_layer():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
     pdf = make_pdf(["a", "b", "c", "d", "e", "f"], image_pages={2, 3, 4, 6})
 
     report = await ingest(chat, Upload("mixed.pdf", pdf, PDF))
@@ -89,7 +90,7 @@ async def test_warns_about_pages_without_a_text_layer():
 
 
 async def test_warns_about_a_single_page_without_a_text_layer():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
     pdf = make_pdf(["a", "b"], image_pages={2})
 
     report = await ingest(chat, Upload("mixed.pdf", pdf, PDF))
@@ -100,7 +101,7 @@ async def test_warns_about_a_single_page_without_a_text_layer():
 
 
 async def test_offers_quick_replies_naming_a_single_new_document():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
 
     report = await ingest(chat, Upload("invoice.pdf", small_pdf(), PDF))
 
@@ -111,7 +112,7 @@ async def test_offers_quick_replies_naming_a_single_new_document():
 
 
 async def test_offers_quick_replies_for_several_new_documents():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
 
     report = await ingest(
         chat,
@@ -123,7 +124,7 @@ async def test_offers_quick_replies_for_several_new_documents():
 
 
 async def test_offers_no_quick_replies_when_nothing_was_added():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
 
     report = await ingest(chat, Upload("notes.txt", b"hello", "text/plain"))
 

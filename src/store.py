@@ -4,7 +4,9 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 
 import asyncpg
+from pgvector.asyncpg import register_vector
 
+from chunking import Chunk
 from extraction import Document
 
 
@@ -23,6 +25,12 @@ class StoredDocument:
     pages: list[str]
 
 
+@dataclass(frozen=True)
+class FoundChunk:
+    document: str
+    chunk: Chunk
+
+
 class DuplicateDocument(Exception):
     pass
 
@@ -30,13 +38,31 @@ class DuplicateDocument(Exception):
 class MemoryStore:
     def __init__(self):
         self._documents = defaultdict(dict)
+        self._chunks = defaultdict(list)
 
-    async def add_document(self, thread_id: str, document: Document) -> str:
+    async def add_document(
+        self,
+        thread_id: str,
+        document: Document,
+        chunks: list[Chunk],
+        embeddings: list[list[float]],
+    ) -> str:
         if await self.has_document(thread_id, document.content_hash):
             raise DuplicateDocument(document.name)
         document_id = str(uuid.uuid4())
         self._documents[thread_id][document_id] = document
+        for c, embedding in zip(chunks, embeddings, strict=True):
+            self._chunks[thread_id].append((FoundChunk(document.name, c), embedding))
         return document_id
+
+    async def search(
+        self, thread_id: str, embedding: list[float], limit: int
+    ) -> list[FoundChunk]:
+        ranked = sorted(
+            self._chunks[thread_id],
+            key=lambda item: cosine_distance(item[1], embedding),
+        )
+        return [found for found, _ in ranked[:limit]]
 
     async def has_document(self, thread_id: str, content_hash: str) -> bool:
         return any(
@@ -56,11 +82,27 @@ class MemoryStore:
         ]
 
 
+def cosine_distance(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norms = sum(x * x for x in a) ** 0.5 * sum(y * y for y in b) ** 0.5
+    return 1 - dot / norms if norms else 1.0
+
+
+async def connect(database_url: str) -> asyncpg.Pool:
+    return await asyncpg.create_pool(database_url, init=register_vector)
+
+
 class PostgresStore:
     def __init__(self, pool):
         self.pool = pool
 
-    async def add_document(self, thread_id: str, document: Document) -> str:
+    async def add_document(
+        self,
+        thread_id: str,
+        document: Document,
+        chunks: list[Chunk],
+        embeddings: list[list[float]],
+    ) -> str:
         outline = json.dumps([asdict(entry) for entry in document.outline])
         async with self.pool.acquire() as connection, connection.transaction():
             # Uploads can arrive before Chainlit has saved the Thread.
@@ -70,7 +112,7 @@ class PostgresStore:
                 thread_id,
             )
             try:
-                return await connection.fetchval(
+                document_id = await connection.fetchval(
                     """INSERT INTO documents
                            (thread_id, name, content_hash, pages, outline, tokens)
                        VALUES ($1, $2, $3, $4, $5, $6)
@@ -84,6 +126,36 @@ class PostgresStore:
                 )
             except asyncpg.UniqueViolationError as error:
                 raise DuplicateDocument(document.name) from error
+            await connection.executemany(
+                """INSERT INTO chunks
+                       (document_id, position, text, page_start, page_end, embedding)
+                   VALUES ($1, $2, $3, $4, $5, $6)""",
+                [
+                    (document_id, position, c.text, c.page_start, c.page_end, embedding)
+                    for position, (c, embedding) in enumerate(zip(chunks, embeddings))
+                ],
+            )
+        return document_id
+
+    async def search(
+        self, thread_id: str, embedding: list[float], limit: int
+    ) -> list[FoundChunk]:
+        rows = await self.pool.fetch(
+            """SELECT d.name, c.text, c.page_start, c.page_end
+               FROM chunks c JOIN documents d ON d.id = c.document_id
+               WHERE d.thread_id = $1
+               ORDER BY c.embedding <=> $2
+               LIMIT $3""",
+            thread_id,
+            embedding,
+            limit,
+        )
+        return [
+            FoundChunk(
+                row["name"], Chunk(row["text"], row["page_start"], row["page_end"])
+            )
+            for row in rows
+        ]
 
     async def has_document(self, thread_id: str, content_hash: str) -> bool:
         return await self.pool.fetchval(

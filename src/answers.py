@@ -26,9 +26,7 @@ class Source:
 
     @property
     def label(self) -> str:
-        if self.page_start == self.page_end:
-            return f"{self.document}, p. {self.page_start}"
-        return f"{self.document}, pp. {self.page_start}–{self.page_end}"
+        return page_label(self.document, self.page_start, self.page_end)
 
 
 @dataclass(frozen=True)
@@ -41,6 +39,12 @@ class Location:
     document: str
     page_start: int
     page_end: int
+
+
+def page_label(document: str, first: int, last: int) -> str:
+    if first == last:
+        return f"{document}, p. {first}"
+    return f"{document}, pp. {first}–{last}"
 
 
 def recent(history: list[dict]) -> list[dict]:

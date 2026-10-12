@@ -8,14 +8,15 @@ ARG UID=1000
 ARG GID=1000
 RUN groupadd --non-unique --gid "$GID" app \
     && useradd --non-unique --uid "$UID" --gid "$GID" --create-home app \
-    && install -d -o app -g app /app /opt/venv
+    && install -d -o app -g app /app /opt/venv /opt/fastembed
 
 # The venv lives outside /app so bind-mounting the repo over /app doesn't hide it.
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    FASTEMBED_CACHE_PATH=/opt/fastembed
 
 USER app
 WORKDIR /app
@@ -25,6 +26,10 @@ RUN --mount=type=cache,target=/home/app/.cache/uv,uid=$UID,gid=$GID \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     uv sync --locked
+
+# Bake the embedding model in, so the first upload isn't slow and works offline.
+# Keep the name in sync with embeddings.MODEL; source isn't copied in yet here.
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5')"
 
 COPY --chown=app:app . .
 

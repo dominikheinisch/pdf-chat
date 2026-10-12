@@ -1,3 +1,5 @@
+from fakes import FakeEmbedder
+
 from answers import Answer
 from chat import Chat, RetrievalMode
 from store import MemoryStore
@@ -14,7 +16,7 @@ def answer_text(events):
 
 
 async def test_asks_for_a_pdf_when_the_thread_has_no_documents():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
 
     events = await ask(chat, "What is the total on the invoice?")
 
@@ -22,7 +24,7 @@ async def test_asks_for_a_pdf_when_the_thread_has_no_documents():
 
 
 async def test_explains_what_it_can_do_without_calling_the_model():
-    chat = Chat(store=MemoryStore())
+    chat = Chat(store=MemoryStore(), embedder=FakeEmbedder())
 
     events = await ask(chat, "  what can you do? ")
 
