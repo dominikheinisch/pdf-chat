@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 # Up to here the whole text fits comfortably in one prompt.
-AUTO_LIMIT = 50_000
+AUTO_LIMIT = 5_000
 # Above this, Haiku moves to its pricier long-context tier.
 FULL_CONTEXT_LIMIT = 100_000
 

@@ -33,7 +33,7 @@ Quote check, and so on) are defined in [`CONTEXT.md`](../CONTEXT.md).
   from the next message. Each reply shows the Effective mode, for example
   `Mode: Auto → Agentic navigation`.
 - **Every question covers all Documents in the Thread.** There is no Document picker.
-- **Auto** estimates the tokens of the Thread's Documents (characters ÷ 4): 50k or
+- **Auto** estimates the tokens of the Thread's Documents (characters ÷ 4): 5k or
   less goes to Full context, and more goes to Agentic navigation. This way the default
   path shows the agent, and broad questions such as summaries work on large
   Documents. Auto never picks RAG.

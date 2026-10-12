@@ -11,8 +11,8 @@ AGENT = RetrievalMode.AGENTIC
 @pytest.mark.parametrize(
     ("mode", "tokens", "effective", "label"),
     [
-        (AUTO, 50_000, FULL, "Auto → Full context"),
-        (AUTO, 50_001, AGENT, "Auto → Agentic navigation"),
+        (AUTO, 5_000, FULL, "Auto → Full context"),
+        (AUTO, 5_001, AGENT, "Auto → Agentic navigation"),
         (FULL, 100_000, FULL, "Full context"),
         (FULL, 100_001, AGENT, "Full context → Agentic navigation (too large)"),
         (RAG, 500, RAG, "RAG"),

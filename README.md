@@ -47,7 +47,7 @@ Each question then goes through one of four retrieval modes:
 | **Full context** | Sends every page to Claude | Most complete answers, summaries, cross-references | Cost and latency grow with size; capped at 100k tokens |
 | **RAG** | Sends the 8 chunks closest to the question | Cheap and fast; specific facts | Broad questions ("summarize this") see only 8 fragments |
 | **Agentic navigation** | A LangGraph agent lists documents, reads outlines, reads page ranges and searches, up to 8 tool calls | Large documents, broad and multi-step questions | Slower and pricier; can stop before reading everything |
-| **Auto** (default) | Full context up to 50k tokens, the agent above | Sensible without knowing the trade-offs | — |
+| **Auto** (default) | Full context up to 5k tokens, the agent above | Sensible without knowing the trade-offs | — |
 
 **Why Auto prefers the agent over RAG for large documents.** The first thing people
 ask about a long report is usually broad: "summarize it", "what are the key points?".
