@@ -1,4 +1,5 @@
-from chat import Answer, Chat, RetrievalMode
+from answers import Answer
+from chat import Chat, RetrievalMode
 from store import MemoryStore
 
 

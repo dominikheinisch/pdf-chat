@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import StrEnum
 
+from answers import Answer, Location, Sources, document_block, stream_answer
 from extraction import (
     CorruptedPdf,
     EncryptedPdf,
@@ -48,8 +49,8 @@ class RetrievalMode(StrEnum):
 
 
 @dataclass(frozen=True)
-class Answer:
-    text: str
+class ModeUsed:
+    label: str
 
 
 @dataclass(frozen=True)
@@ -89,13 +90,24 @@ class IngestReport:
             summary += f" ({', '.join(details)})"
         return summary + "."
 
+    @property
+    def quick_replies(self) -> list[str]:
+        added = [f.name for f in self.files if f.outcome == Outcome.ADDED]
+        if len(added) == 1:
+            return [f"Summarize {added[0]}", f"Key points of {added[0]}"]
+        if added:
+            return ["Summarize the new documents", "Compare them"]
+        return []
+
     def _count(self, outcome: Outcome) -> int:
         return sum(1 for f in self.files if f.outcome == outcome)
 
 
 class Chat:
-    def __init__(self, store):
+    def __init__(self, store, llm=None, model=None):
         self.store = store
+        self.llm = llm
+        self.model = model
 
     async def ingest(self, thread_id: str, uploads: list[Upload]) -> IngestReport:
         return IngestReport([await self._ingest(thread_id, u) for u in uploads])
@@ -112,12 +124,29 @@ class Chat:
         await self.store.add_document(thread_id, document)
         return FileResult(upload.name, Outcome.ADDED, missing_text_warning(document))
 
-    async def ask(self, thread_id, question, mode, history) -> AsyncIterator[Answer]:
+    async def ask(
+        self, thread_id, question, mode, history
+    ) -> AsyncIterator[Answer | ModeUsed | Sources]:
         if question.strip().lower() == CAPABILITIES_QUESTION:
             yield Answer(CAPABILITIES)
             return
-        if not await self.store.list_documents(thread_id):
+        documents = await self.store.load_documents(thread_id)
+        if not documents:
             yield Answer(NO_DOCUMENTS)
+            return
+        yield ModeUsed(RetrievalMode.FULL_CONTEXT)
+
+        def locate(citation) -> Location:
+            document = documents[citation.document_index]
+            return Location(
+                document.name, citation.start_block_index + 1, citation.end_block_index
+            )
+
+        blocks = [document_block(d.name, d.pages) for d in documents]
+        async for event in stream_answer(
+            self.llm, self.model, blocks, question, history, locate
+        ):
+            yield event
 
 
 def missing_text_warning(document) -> str | None:

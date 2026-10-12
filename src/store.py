@@ -16,6 +16,13 @@ class DocumentInfo:
     tokens: int
 
 
+@dataclass(frozen=True)
+class StoredDocument:
+    id: str
+    name: str
+    pages: list[str]
+
+
 class DuplicateDocument(Exception):
     pass
 
@@ -39,6 +46,12 @@ class MemoryStore:
     async def list_documents(self, thread_id: str) -> list[DocumentInfo]:
         return [
             DocumentInfo(id, d.name, len(d.pages), d.tokens)
+            for id, d in self._documents[thread_id].items()
+        ]
+
+    async def load_documents(self, thread_id: str) -> list[StoredDocument]:
+        return [
+            StoredDocument(id, d.name, d.pages)
             for id, d in self._documents[thread_id].items()
         ]
 
@@ -88,3 +101,11 @@ class PostgresStore:
             thread_id,
         )
         return [DocumentInfo(**row) for row in rows]
+
+    async def load_documents(self, thread_id: str) -> list[StoredDocument]:
+        rows = await self.pool.fetch(
+            """SELECT id, name, pages FROM documents
+               WHERE thread_id = $1 ORDER BY created_at""",
+            thread_id,
+        )
+        return [StoredDocument(**row) for row in rows]

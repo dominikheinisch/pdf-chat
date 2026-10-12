@@ -97,3 +97,34 @@ async def test_warns_about_a_single_page_without_a_text_layer():
     assert report.files[0].message == (
         "Page 2 has no text layer (scanned?); OCR isn't supported yet."
     )
+
+
+async def test_offers_quick_replies_naming_a_single_new_document():
+    chat = Chat(store=MemoryStore())
+
+    report = await ingest(chat, Upload("invoice.pdf", small_pdf(), PDF))
+
+    assert report.quick_replies == [
+        "Summarize invoice.pdf",
+        "Key points of invoice.pdf",
+    ]
+
+
+async def test_offers_quick_replies_for_several_new_documents():
+    chat = Chat(store=MemoryStore())
+
+    report = await ingest(
+        chat,
+        Upload("invoice.pdf", small_pdf(), PDF),
+        Upload("contract.pdf", make_pdf(["Contract"]), PDF),
+    )
+
+    assert report.quick_replies == ["Summarize the new documents", "Compare them"]
+
+
+async def test_offers_no_quick_replies_when_nothing_was_added():
+    chat = Chat(store=MemoryStore())
+
+    report = await ingest(chat, Upload("notes.txt", b"hello", "text/plain"))
+
+    assert report.quick_replies == []

@@ -3,10 +3,12 @@ from secrets import compare_digest
 
 import asyncpg
 import chainlit as cl
+from anthropic import AsyncAnthropic
 from chainlit.element import Element
 from chainlit.types import ThreadDict
 
-from chat import Answer, Chat, IngestReport, Outcome, RetrievalMode, Upload
+from answers import Answer, Sources
+from chat import Chat, IngestReport, ModeUsed, Outcome, RetrievalMode, Upload
 from config import Settings
 from store import PostgresStore
 
@@ -19,7 +21,8 @@ chat: Chat
 async def startup() -> None:
     global chat
     pool = await asyncpg.create_pool(settings.database_url)
-    chat = Chat(store=PostgresStore(pool))
+    llm = AsyncAnthropic(api_key=settings.anthropic_api_key.get_secret_value())
+    chat = Chat(store=PostgresStore(pool), llm=llm, model=settings.llm_model)
 
 
 @cl.password_auth_callback
@@ -40,9 +43,20 @@ async def starters() -> list[cl.Starter]:
     ]
 
 
+@cl.on_chat_start
+async def start() -> None:
+    cl.user_session.set("history", [])
+
+
 @cl.on_chat_resume
 async def resume(thread: ThreadDict) -> None:
-    pass
+    roles = {"user_message": "user", "assistant_message": "assistant"}
+    history = [
+        {"role": roles[step["type"]], "content": step["output"] or ""}
+        for step in thread["steps"]
+        if step["type"] in roles
+    ]
+    cl.user_session.set("history", history)
 
 
 @cl.on_message
@@ -52,6 +66,15 @@ async def on_message(message: cl.Message) -> None:
         await ingest(files)
     if message.content.strip():
         await answer(message.content)
+
+
+@cl.action_callback("quick_reply")
+async def on_quick_reply(action: cl.Action) -> None:
+    # Only typed messages reach on_message, so post the click as the user's turn.
+    question = action.payload["text"]
+    await action.remove()
+    await cl.Message(content=question, type="user_message").send()
+    await answer(question)
 
 
 async def ingest(files: list[Element]) -> None:
@@ -64,7 +87,11 @@ async def ingest(files: list[Element]) -> None:
             step.output = report.files[0].message or report.files[0].outcome
         results.extend(report.files)
     report = IngestReport(results)
-    await cl.Message(content=describe(report)).send()
+    actions = [
+        cl.Action(name="quick_reply", payload={"text": text}, label=text)
+        for text in report.quick_replies
+    ]
+    await cl.Message(content=describe(report), actions=actions).send()
 
 
 def describe(report: IngestReport) -> str:
@@ -81,8 +108,35 @@ def describe(report: IngestReport) -> str:
 
 async def answer(question: str) -> None:
     thread_id = cl.context.session.thread_id
+    history = cl.user_session.get("history", [])
     reply = cl.Message(content="")
-    async for event in chat.ask(thread_id, question, RetrievalMode.AUTO, []):
-        if isinstance(event, Answer):
+    mode = None
+    text = ""
+    async for event in chat.ask(thread_id, question, RetrievalMode.AUTO, history):
+        if isinstance(event, ModeUsed):
+            mode = event.label
+        elif isinstance(event, Answer):
+            text += event.text
             await reply.stream_token(event.text)
+        elif isinstance(event, Sources) and event.sources:
+            await add_sources(reply, event)
+    history.append({"role": "user", "content": question})
+    history.append({"role": "assistant", "content": text})
+    if mode:
+        await reply.stream_token(f"\n\n*Mode: {mode}*")
     await reply.send()
+
+
+async def add_sources(reply: cl.Message, sources: Sources) -> None:
+    lines = ["\n\n**Sources**"]
+    for source in sources.sources:
+        name = f"Source {source.number}"
+        lines.append(f"{source.number}. {source.label} ({name})")
+        reply.elements.append(
+            cl.Text(
+                name=name,
+                content=f"**{source.label}**\n\n> {source.quote}",
+                display="side",
+            )
+        )
+    await reply.stream_token("\n".join(lines))
