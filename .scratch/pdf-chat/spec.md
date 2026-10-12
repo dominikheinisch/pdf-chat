@@ -323,7 +323,7 @@ The README explains the approaches, their trade-offs and the follow-ups.
     `page_start`, `page_end`, and a 384-dimension embedding
 - **Searches use exact cosine distance.** No vector index is added, which is fine at
   this scale and noted in the README.
-- **The original PDF bytes are never stored.**
+- **Attachments are stored on the `attachments` volume** (see `.scratch/attachments/spec.md`). Documents keep only text.
 - **There is no LangGraph checkpointer.** Messages come from Chainlit's Thread, and
   Document state comes from the tables above.
 
@@ -407,7 +407,6 @@ The README explains the approaches, their trade-offs and the follow-ups.
 - several users, sign-up, or roles
 - a Claude Code or Agent SDK backend, or any provider other than the Claude API
 - LLM evals
-- storing the original PDFs
 
 ## Further Notes
 

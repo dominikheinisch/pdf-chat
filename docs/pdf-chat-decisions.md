@@ -132,8 +132,15 @@ Quote check, and so on) are defined in [`CONTEXT.md`](../CONTEXT.md).
 - **Deleting a Thread deletes its Documents.** The documents table has a foreign key
   to Chainlit's `"Thread"(id)` with `ON DELETE CASCADE`, and chunks cascade from
   documents. A single Document can't be removed yet.
-- **The original PDF is not stored.** The text kept per Page is enough for
-  quotations.
+- **Attachments are kept, on disk.** Chainlit only stores element bytes through a
+  storage client, so without one a resumed Thread loses its PDF chips and the text of
+  its Sources panels. A small custom storage client writes them to the named volume
+  `attachments`. MinIO with Chainlit's S3 client was rejected: an extra container, and
+  presigned URLs that the browser must be able to reach. Postgres `bytea` was rejected
+  for its 1 GB cap per value. Documents stay text-only and don't link to their
+  Attachment.
+- **Attachments are served by a route that requires login.** PDFs open inline; other
+  files download. There is no per-Thread check, since there is one demo account.
 - **Chat history is kept by default.** It lives in the named volume `db-data`.
 
 ## Infrastructure

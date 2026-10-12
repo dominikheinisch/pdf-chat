@@ -3,12 +3,15 @@ from secrets import compare_digest
 
 import chainlit as cl
 from anthropic import AsyncAnthropic
+from chainlit.data.chainlit_data_layer import ChainlitDataLayer
 from chainlit.element import Element
 from chainlit.input_widget import Select
+from chainlit.server import app as server
 from chainlit.types import ThreadDict
 from langchain_anthropic import ChatAnthropic
 
 from answers import Answer, Sources
+from attachments import AttachmentStore
 from chat import (
     Chat,
     IngestReport,
@@ -25,9 +28,17 @@ from store import PostgresStore, connect
 # Fails at startup when a required setting such as ANTHROPIC_API_KEY is missing.
 settings = Settings()
 chat: Chat
+attachments = AttachmentStore(settings.attachments_dir)
+attachments.mount(server)
 
 MODES = list(RetrievalMode)
 DEFAULT_MODE = RetrievalMode.AUTO
+
+
+@cl.data_layer
+def data_layer() -> ChainlitDataLayer:
+    # Declared explicitly, rather than from DATABASE_URL alone, to keep Attachments.
+    return ChainlitDataLayer(settings.database_url, storage_client=attachments)
 
 
 @cl.on_app_startup

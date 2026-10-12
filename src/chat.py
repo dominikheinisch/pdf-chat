@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import StrEnum
@@ -27,6 +28,8 @@ from extraction import (
 )
 from quotes import check_quotes
 from routing import RetrievalMode, route
+
+logger = logging.getLogger(__name__)
 
 TOP_CHUNKS = 8
 NO_DOCUMENTS = "Upload a PDF first, then ask me about it."
@@ -154,7 +157,16 @@ class Chat:
         if not documents:
             yield Answer(NO_DOCUMENTS)
             return
-        effective, label = route(mode, sum(d.tokens for d in documents))
+        tokens = sum(d.tokens for d in documents)
+        effective, label = route(mode, tokens)
+        logger.info(
+            "Routing %s tokens (%s) → %s",
+            tokens,
+            ", ".join(
+                f"{d.name}: {d.page_count} pages, {d.tokens} tokens" for d in documents
+            ),
+            label,
+        )
         yield ModeUsed(label)
         if effective == RetrievalMode.RAG:
             answer = self._rag(thread_id, question, history)

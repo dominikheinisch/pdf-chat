@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
@@ -8,3 +10,4 @@ class Settings(BaseSettings):
     demo_username: str
     demo_password: SecretStr
     database_url: str
+    attachments_dir: Path = Path("/data/attachments")

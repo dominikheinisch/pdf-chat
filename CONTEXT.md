@@ -9,6 +9,12 @@ only from those PDFs, with page citations.
 One chat with its own messages and Documents.
 _Avoid_: Conversation, session, chat
 
+**Attachment**:
+A file as the user sent it on a message, kept with that message. An Attachment that
+ingests successfully produces a Document; rejected and duplicate uploads stay
+Attachments only.
+_Avoid_: File, upload
+
 **Document**:
 An uploaded PDF after ingestion, owned by exactly one Thread.
 _Avoid_: File, PDF (once ingested)

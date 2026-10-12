@@ -15,8 +15,10 @@ services:
       - path: .env
         required: false
     environment:
-      # Setting this is what turns on Chainlit's Postgres data layer.
       DATABASE_URL: postgresql://chainlit:chainlit@db:5432/chainlit
+    volumes:
+      # Attachments: uploaded PDFs and Sources panels, served back on resume.
+      - attachments:/data/attachments
     depends_on:
       db:
         condition: service_healthy
@@ -48,3 +50,4 @@ services:
 
 volumes:
   db-data:
+  attachments:

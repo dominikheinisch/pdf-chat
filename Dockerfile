@@ -8,7 +8,7 @@ ARG UID=1000
 ARG GID=1000
 RUN groupadd --non-unique --gid "$GID" app \
     && useradd --non-unique --uid "$UID" --gid "$GID" --create-home app \
-    && install -d -o app -g app /app /opt/venv /opt/fastembed
+    && install -d -o app -g app /app /opt/venv /opt/fastembed /data/attachments
 
 # The venv lives outside /app so bind-mounting the repo over /app doesn't hide it.
 ENV PATH="/opt/venv/bin:$PATH" \

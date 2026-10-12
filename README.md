@@ -21,11 +21,15 @@ Attach PDFs with the paperclip button at any point, then ask away. Pick a
 | `make test`             | Unit tests; no network, API key or database needed   |
 | `make test-integration` | The Postgres store test, against the Compose database |
 | `make lint`             | Ruff fix and format                                  |
-| `make down`             | Stop; chats and documents are kept                   |
-| `make reset`            | Stop and delete all chats and documents              |
+| `make down`             | Stop; chats, documents and attachments are kept      |
+| `make reset`            | Stop and delete all chats, documents and attachments |
 
 The database schema lives in `db/init/` and only runs on an empty volume. After
 changing it, or when upgrading from an older checkout, run `make reset` once.
+
+Uploaded PDFs and the Sources panels are kept on the `attachments` volume, so a
+resumed chat shows them as before. Chats from before that volume existed come back
+without them; `make reset` clears them out.
 
 ## How it works
 
