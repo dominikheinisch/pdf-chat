@@ -117,3 +117,29 @@ async def test_searches_chunks_and_labels_them_with_their_pages():
     [used] = tools_used(await ask(chat))
 
     assert used.output.startswith("[invoice.pdf, pp. 1–2]\nInvoice 2024-17")
+
+
+async def test_checks_quotes_before_listing_sources():
+    chat = await chat_with(
+        AIMessage(
+            content=(
+                'It says "Late payments add 2% interest per month" '
+                '[invoice.pdf, p. 1] and "payment is due within fourteen days" '
+                "[invoice.pdf, p. 2]."
+            )
+        ),
+    )
+
+    events = await ask(chat)
+
+    assert events[-1].sources == [
+        Source(1, "invoice.pdf", 2, 2, "Late payments add 2% interest per month"),
+        Source(
+            2,
+            "invoice.pdf",
+            2,
+            2,
+            "payment is due within fourteen days",
+            "⚠️ quote not found in invoice.pdf",
+        ),
+    ]

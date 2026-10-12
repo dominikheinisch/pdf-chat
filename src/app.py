@@ -179,8 +179,11 @@ async def add_sources(reply: cl.Message, sources: Sources) -> None:
     lines = ["\n\n**Sources**"]
     for source in sources.sources:
         name = f"Source {source.number}"
-        lines.append(f"{source.number}. {source.label} ({name})")
+        warning = f" {source.warning}" if source.warning else ""
+        lines.append(f"{source.number}. {source.label} ({name}){warning}")
         content = f"**{source.label}**"
+        if source.warning:
+            content += f"\n\n{source.warning}"
         if source.quote:
             content += f"\n\n> {source.quote}"
         reply.elements.append(cl.Text(name=name, content=content, display="side"))

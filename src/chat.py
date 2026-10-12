@@ -25,6 +25,7 @@ from extraction import (
     NoText,
     extract,
 )
+from quotes import check_quotes
 
 TOP_CHUNKS = 8
 NO_DOCUMENTS = "Upload a PDF first, then ask me about it."
@@ -213,6 +214,7 @@ class Chat:
             "tool_calls": 0,
         }
         numbering = CitationNumbering()
+        answer = ""
         tool_calls = 0
         # The limit is a safety net; the agent itself stops after MAX_TOOL_CALLS.
         config = {"recursion_limit": 4 * MAX_TOOL_CALLS}
@@ -220,6 +222,7 @@ class Chat:
             kind = event["event"]
             if kind == "on_chat_model_stream":
                 if text := numbering.feed(event["data"]["chunk"].text):
+                    answer += text
                     yield Answer(text)
             elif kind == "on_tool_end":
                 tool_calls += 1
@@ -230,10 +233,13 @@ class Chat:
                     str(getattr(output, "content", output)),
                 )
         if text := numbering.flush():
+            answer += text
             yield Answer(text)
         if tool_calls >= MAX_TOOL_CALLS:
             yield Answer(STOPPED_EARLY)
-        yield Sources(numbering.sources)
+        documents = await self.store.load_documents(thread_id)
+        pages = {d.name: d.pages for d in documents}
+        yield Sources(check_quotes(answer, numbering.sources, pages))
 
 
 def missing_text_warning(document) -> str | None:

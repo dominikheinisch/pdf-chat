@@ -23,6 +23,7 @@ class Source:
     page_start: int
     page_end: int
     quote: str
+    warning: str | None = None
 
     @property
     def label(self) -> str:
