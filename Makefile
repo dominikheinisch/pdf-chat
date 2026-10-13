@@ -3,6 +3,11 @@ UV_IMAGE := ghcr.io/astral-sh/uv:0.13.0-python3.13-trixie-slim
 export UID := $(shell id -u)
 export GID := $(shell id -g)
 
+# Resource caps for compose.yaml, scaled to this host: 70% of RAM, all cores but two.
+# APP_MEM_LIMIT / APP_CPUS in .env take precedence; empty (no /proc) means its fallback.
+export AUTO_MEM_LIMIT := $(shell awk '/^MemTotal/ {printf "%dm", $$2 * 0.7 / 1024}' /proc/meminfo 2>/dev/null)
+export AUTO_CPUS := $(shell n=$$(nproc 2>/dev/null) && echo $$((n > 2 ? n - 2 : 1)))
+
 # One-off app container with the repo bind-mounted: tools see current code and write back.
 # --no-deps: tools don't need the database.
 TOOL := docker compose run --rm --build --no-deps -v "$(CURDIR)":/app app

@@ -74,3 +74,5 @@ make run                # http://localhost:8001, log in with DEMO_USERNAME / DEM
 | `make lint`             | Ruff fix and format                                  |
 | `make down`             | Stop; chats, documents and attachments are kept      |
 | `make reset`            | Stop and delete all chats, documents and attachments |
+
+Containers are capped at 70% of RAM and all cores but two; override with `APP_MEM_LIMIT` / `APP_CPUS` in `.env`.

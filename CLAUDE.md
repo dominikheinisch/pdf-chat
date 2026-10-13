@@ -14,6 +14,10 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 Single-context: one root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
+## Docker
+
+Every service in `compose.yaml` merges `<<: *resource-limits`, so no container can starve the host.
+
 ## Commits
 
 Use [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<optional scope>): <description>`, e.g. `feat(ingest): add PDF chunking`. Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, `style`.

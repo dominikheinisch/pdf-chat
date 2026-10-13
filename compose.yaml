@@ -1,5 +1,18 @@
+# Caps for every service, so heavy work (PDF ingestion, embeddings) can't starve the
+# host. New services must merge it: `<<: *resource-limits`. `make` derives the
+# defaults from the host (70% of RAM, all cores but two); .env can override them.
+x-resource-limits: &resource-limits
+  mem_limit: ${APP_MEM_LIMIT:-${AUTO_MEM_LIMIT:-8g}}
+  # Same as mem_limit: no swap, since swapping is what freezes the host.
+  memswap_limit: ${APP_MEM_LIMIT:-${AUTO_MEM_LIMIT:-8g}}
+  cpus: ${APP_CPUS:-${AUTO_CPUS:-4}}
+  # Doesn't limit usage: if the whole host runs out of memory, the kernel kills
+  # this before the desktop or stateful services.
+  oom_score_adj: 500
+
 services:
   app:
+    <<: *resource-limits
     build:
       context: .
       args:
@@ -33,6 +46,10 @@ services:
           path: uv.lock
 
   db:
+    <<: *resource-limits
+    # Last to be killed if the host runs out of memory: losing an in-flight upload
+    # beats killing Postgres mid-write.
+    oom_score_adj: -500
     image: pgvector/pgvector:pg18
     # Dev-only credentials: no port is published, so only the app can reach it.
     environment:
